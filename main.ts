@@ -1,3 +1,9 @@
+import { pino } from "npm:pino";
+
+const logger = pino({
+  level: Deno.env.get('LOG_LEVEL') || "info",
+});
+
 export type ConfigFile = {
   userId: string;
   userPAT: string;
@@ -29,26 +35,32 @@ export type GetInfoResponse = {
 };
 
 export async function api(
-  input: URL | Request | string,
+  input: URL | string,
   init?: RequestInit,
 ): Promise<Response> {
+  logger.trace({ input, init }, "api");
+
+  let url: URL | undefined;
+
+  if (typeof input === "string") {
+    url = new URL(input, Config.serverURL);
+  } else {
+    url = input;
+  }
+
+  const _init = {
+    ...(init || {}),
+    headers: {
+      "X-User-Id": Config.userId,
+      "X-Auth-Token": Config.userPAT,
+      ...(init?.headers || {}),
+    },
+  };
+
   try {
-    let _input = input;
+    logger.trace({ url, _init }, "fetch()");
 
-    if (typeof input === "string") {
-      _input = `${Config.serverURL}${input}`;
-    }
-
-    const _init = {
-      ...(init || {}),
-      headers: {
-        "X-User-Id": Config.userId,
-        "X-Auth-Token": Config.userPAT,
-        ...(init?.headers || {})
-      },
-    };
-
-    const response = await fetch(_input, _init);
+    const response = await fetch(url, _init);
 
     if (response.headers.get("content-type") !== "application/json") {
       throw new Error(
@@ -70,8 +82,8 @@ export async function api(
     return response;
   } catch (e: unknown) {
     if (e instanceof TypeError) {
-      console.error(
-        `Error trying to connect to server at ${Config.serverURL} - check your configuration file`,
+      logger.fatal(
+        `Error trying to connect to server at ${url.protocol}//${url.host} - check your configuration file`,
       );
     }
 
@@ -82,6 +94,8 @@ export async function api(
 }
 
 export function getServerInfo() {
+  logger.trace('getServerInfo');
+
   return void api("/api/info");
 }
 
@@ -112,15 +126,23 @@ export type InstanceData = {
 export type InstancesResponse = Record<string, InstanceData>;
 
 export async function getInstances(): Promise<InstancesResponse> {
+  logger.trace("getInstances");
+
   const response = await api("/api/v1/instances.get");
 
-  const data = (await response.json()) as { instances: Array<InstanceData> };
+  const data = await response.json();
+
+  if (!data.success && data.error) {
+    throw new Error(data.error, { cause: "ERR_INSTANCE_DATA_NOT_AVAILABLE" });
+  }
 
   const result: InstancesResponse = {};
 
   for (const instance of data.instances) {
     result[instance.instanceRecord._id] = instance;
   }
+
+  logger.trace({ msg: "Instance result", result });
 
   return result;
 }
@@ -133,7 +155,16 @@ export type AppsResponse = Array<{
 }>;
 
 export async function getAppsInInstance(instance: InstanceData) {
-  const targetUrl = new URL("/api/apps/installed", `http://${instance.address}`);
+  logger.trace({ params: { instance } }, 'getAppsInInstance');
+
+  logger.debug(
+    `Fetching apps from ${instance.address} (${instance.instanceRecord._id})`,
+  );
+
+  const targetUrl = new URL(
+    "/api/apps/installed",
+    `http://${instance.address}`,
+  );
   targetUrl.port = instance.instanceRecord.extraInformation.port;
 
   const response = await api(targetUrl);
@@ -143,15 +174,23 @@ export async function getAppsInInstance(instance: InstanceData) {
   return data.apps;
 }
 
-export async function changeAppStatusInInstance(instance: InstanceData, appId: string) {
-  const targetUrl = new URL(`/api/apps/${appId}/status`, `http://${instance.address}`);
+export async function changeAppStatusInInstance(
+  instance: InstanceData,
+  appId: string,
+) {
+  logger.trace({ params: { instance, appId } }, 'changeAppStatusInInstance');
+
+  const targetUrl = new URL(
+    `/api/apps/${appId}/status`,
+    `http://${instance.address}`,
+  );
   targetUrl.port = instance.instanceRecord.extraInformation.port;
 
   const request: RequestInit = {
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
-    method: 'post',
+    method: "post",
     body: JSON.stringify({ status: "manually_enabled" }),
   };
 
@@ -170,14 +209,22 @@ export type AppInstancesInfo = {
     id: string;
     status: string;
   }>;
-}
+};
 
 export async function getClusterAppsData(instanceMap: InstancesResponse) {
+  logger.trace({ params: { instanceMap } }, 'getClusterAppsData');
+
+  logger.debug("Fetching apps data in cluster");
+
   const instances = Object.values(instanceMap);
 
   const clusterApps: Record<string, AppInstancesInfo> = {};
 
   for (const instance of instances) {
+    logger.debug(
+      `Fetching apps in instance ${instance.address} (${instance.instanceRecord._id})`,
+    );
+
     const apps = await getAppsInInstance(instance);
 
     for (const app of apps) {
@@ -198,37 +245,118 @@ export async function getClusterAppsData(instanceMap: InstancesResponse) {
 
       // NOTE: this doesn't catch the case where the app is not installed in one instance of the cluster
       // Do we care about this behavior?
-      if (!prevInstance || prevInstance.status === currentInstance.status) continue;
+      if (!prevInstance || prevInstance.status === currentInstance.status) {
+        logger.debug(
+          "App %s in instance %s shows no conflict (status %s)",
+          app.name,
+          instance.address,
+          app.status,
+        );
+
+        continue;
+      }
+
+      logger.debug(
+        "App %s is dirty! (instance %s)",
+        app.name,
+        instance.address,
+      );
 
       clusterApps[app.id].isDirty = true;
     }
   }
 
-  console.log(clusterApps);
+  // console.log(clusterApps);
+  logger.trace({ msg: "Cluster apps data", clusterApps });
 
   return clusterApps;
 }
 
 export async function main() {
-  const instanceMap = await getInstances();
+  logger.info(`Initiating check for workspace ${Config.serverURL}`);
 
-  console.log(instanceMap);
+  const instanceMap = await getInstances();
 
   const instances = Object.values(instanceMap);
 
+  if (instances.length < 2) {
+    logger.info(
+      { instances },
+      "Only one instance found in workspace, aborting...",
+    );
+    return;
+  }
+
+  logger.info('Found %d instances in cluster', instances.length);
+
   const clusterApps = await getClusterAppsData(instanceMap);
 
+  const fixedApps = new Set();
+  let fixedInstances = 0;
+
   for (const appInfo of Object.values(clusterApps)) {
-    if (!appInfo.isDirty && appInfo.instances.length === instances.length) continue;
+    logger.debug("Checking app %s across cluster...", appInfo.appName);
+
+    if (!appInfo.isDirty && appInfo.instances.length === instances.length) {
+      logger.debug("App %s is synchronized across cluster", appInfo.appName);
+      continue;
+    }
 
     for (const instance of appInfo.instances) {
-      if (instance.status === 'enabled' || instance.status === 'manually_enabled') continue;
+      logger.debug("Instance %s", instance.id);
 
-      const result = await changeAppStatusInInstance(instanceMap[instance.id], appInfo.appId);
+      if (
+        instance.status === "enabled" ||
+        instance.status === "manually_enabled"
+      ) {
+        logger.debug(
+          "App %s is enabled in instance %s",
+          appInfo.appName,
+          instance.id,
+        );
+        continue;
+      }
 
-      console.log({ result });
+      logger.debug(
+        "Trying to enable app %s in instance %s ...",
+        appInfo.appName,
+        instance.id,
+      );
+
+      const result = await changeAppStatusInInstance(
+        instanceMap[instance.id],
+        appInfo.appId,
+      );
+
+      if (result.success) {
+        fixedApps.add(appInfo.appId);
+        fixedInstances++;
+
+        logger.info(
+          "App %s was successfully enabled in instance %s",
+          appInfo.appName,
+          instance.id,
+        );
+      } else {
+        logger.error({ msg: `Error trying to enable app ${appInfo.appName}`, error: result.error });
+      }
     }
+  }
+
+  if (fixedInstances < 1) {
+    logger.info('Check concluded, no conflicting status found');
+  } else {
+    logger.info('Check concluded, fixed %d apps (%d conflicts)', fixedApps.size, fixedInstances);
   }
 }
 
 await main();
+
+/**
+ * @TODO start interval call
+ * @TODO read config file
+ * @TODO send a message to a channel in Rocket.Chat if fails to enable an app
+ * @TODO log summary after every check
+ * @TODO pino-pretty output by default, disable via env var
+ *
+ */
