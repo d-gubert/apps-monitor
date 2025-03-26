@@ -8,4 +8,6 @@ COPY . /app/monitor
 
 WORKDIR /app/monitor
 
+RUN deno cache main.ts
+
 CMD [ "deno", "run", "-A", "main.ts" ]
