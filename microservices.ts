@@ -17,8 +17,15 @@ export async function getInstances(): Promise<InstanceMap> {
 		);
 	});
 
-	const { items } = JSON.parse(kubectlRaw) as { items: Pod[] };
 	const result: InstanceMap = new Map();
+
+	const { items } = (() => {
+		try {
+			return JSON.parse(kubectlRaw);
+		} catch (cause) {
+			throw new Error('Could not parse kubectl output', { cause });
+		}
+	})() as { items: Pod[] };
 
 	items.forEach((pod) => {
 		const id = pod.metadata?.name;
