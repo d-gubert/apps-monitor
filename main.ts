@@ -1,13 +1,14 @@
 import { pino } from 'npm:pino';
+import { getInstances } from './microservices.ts';
 
-const logger = pino({
+export const logger = pino({
 	level: Deno.env.get('LOG_LEVEL') || 'info',
 });
 
 export type ConfigFile = {
 	userId: string;
 	userPAT: string;
-	serverURL: string;
+	serverURL?: string;
 	interval?: number;
 	alertRoom?: string;
 };
@@ -17,7 +18,7 @@ export type TExecutionContext = {
 	interval: number;
 	userPAT: string;
 	userId: string;
-	serverURL: URL | null;
+	serverURL?: URL;
 	alertRoom?: string;
 };
 
@@ -26,7 +27,6 @@ const ExecutionContext: TExecutionContext = {
 	interval: 5 * 1000 * 60, // 5 minutes default interval
 	userPAT: '',
 	userId: '',
-	serverURL: null,
 };
 
 try {
@@ -59,17 +59,15 @@ try {
 
 	ExecutionContext.userId = configFile.userId;
 
-	if (!configFile.serverURL) {
-		throw new Error('Invalid server URL (serverURL)');
+	if (configFile.serverURL) {
+		ExecutionContext.serverURL = new URL(configFile.serverURL);
 	}
-
-	ExecutionContext.serverURL = new URL(configFile.serverURL);
 
 	if (configFile.alertRoom) {
 		ExecutionContext.alertRoom = configFile.alertRoom;
 	} else {
 		logger.warn(
-			'No alert room specified, we won\'t be able to send message',
+			"No alert room specified, we won't be able to send message",
 		);
 	}
 } catch (e) {
@@ -82,6 +80,14 @@ try {
 	logger.fatal({ msg: 'Could not parse configuration file', error });
 	Deno.exit(1);
 }
+
+export type InstanceData = {
+	id: string;
+	address: string;
+	port: number;
+};
+
+export type InstanceMap = Map<string, InstanceData>;
 
 export async function api(
 	input: URL | string,
@@ -142,74 +148,6 @@ export async function api(
 
 		throw e;
 	}
-
-	throw new Error('Invalid path', { cause: 'ERR_INVALID_FUNCTION_PATH' });
-}
-
-export type GetInfoResponse = {
-	version: string;
-	minimumClientVersions: string;
-	supportedVersions: {
-		signed: string;
-	};
-	cloudWorkspaceId: string;
-	success: boolean;
-};
-
-export function getServerInfo() {
-	logger.trace('getServerInfo');
-
-	return void api('/api/info');
-}
-
-export type InstanceData = {
-	address: string;
-	currentStatus: {
-		connected: boolean;
-		lastHeartbeatTime: number;
-		local: boolean;
-	};
-	instanceRecord: {
-		_id: string;
-		_createdAt: string;
-		_updatedAt: string;
-		extraInformation: {
-			host: string;
-			port: string;
-			tcpPort: number;
-			nodeVersion: string;
-			conns: number;
-		};
-		name: string;
-		pid: number;
-	};
-	broadcastAuth: boolean;
-};
-
-export type InstancesResponse = Record<string, InstanceData>;
-
-export async function getInstances(): Promise<InstancesResponse> {
-	logger.trace('getInstances');
-
-	const response = await api('/api/v1/instances.get');
-
-	const data = await response.json();
-
-	if (!data.success && data.error) {
-		throw new Error(data.error, {
-			cause: 'ERR_INSTANCE_DATA_NOT_AVAILABLE',
-		});
-	}
-
-	const result: InstancesResponse = {};
-
-	for (const instance of data.instances) {
-		result[instance.instanceRecord._id] = instance;
-	}
-
-	logger.trace({ msg: 'Instance result', result });
-
-	return result;
 }
 
 export type AppsResponse = Array<{
@@ -223,14 +161,14 @@ export async function getAppsInInstance(instance: InstanceData) {
 	logger.trace({ params: { instance } }, 'getAppsInInstance');
 
 	logger.debug(
-		`Fetching apps from ${instance.address} (${instance.instanceRecord._id})`,
+		`Fetching apps from ${instance.address} (${instance.id})`,
 	);
 
 	const targetUrl = new URL(
 		'/api/apps/installed',
 		`http://${instance.address}`,
 	);
-	targetUrl.port = instance.instanceRecord.extraInformation.port;
+	targetUrl.port = String(instance.port);
 
 	const response = await api(targetUrl);
 
@@ -249,8 +187,8 @@ export async function changeAppStatusInInstance(
 		`/api/apps/${appId}/status`,
 		`http://${instance.address}`,
 	);
-	targetUrl.port = instance.instanceRecord.extraInformation.port;
-	targetUrl.protocol = ExecutionContext.serverURL!.protocol;
+	targetUrl.port = String(instance.port);
+	// targetUrl.protocol = ExecutionContext.serverURL!.protocol;
 
 	const request: RequestInit = {
 		headers: {
@@ -288,7 +226,7 @@ export async function sendAlertMessage(
 		body: JSON.stringify({
 			message: {
 				rid: ExecutionContext.alertRoom,
-				msg: `Failed attempt to recover app ${appName} on instance ${instance.address} (${instance.instanceRecord._id})`,
+				msg: `Failed attempt to recover app ${appName} on instance ${instance.address} (${instance.id})`,
 			},
 		}),
 	};
@@ -322,63 +260,67 @@ export type AppInstancesInfo = {
 	}>;
 };
 
-export async function getClusterAppsData(instanceMap: InstancesResponse) {
-	logger.trace({ params: { instanceMap } }, 'getClusterAppsData');
+export async function getClusterAppsData(map: InstanceMap) {
+	logger.trace({ params: { map } }, 'getClusterAppsData');
 
 	logger.debug('Fetching apps data in cluster');
 
-	const instances = Object.values(instanceMap);
-
 	const clusterApps: Record<string, AppInstancesInfo> = {};
 
-	for (const instance of instances) {
-		logger.debug(
-			`Fetching apps in instance ${instance.address} (${instance.instanceRecord._id})`,
-		);
+	const controlQueue: Promise<void>[] = [];
 
-		const apps = await getAppsInInstance(instance);
-
-		for (const app of apps) {
-			clusterApps[app.id] = clusterApps[app.id] ?? {
-				appId: app.id,
-				appName: app.name,
-				isDirty: false,
-				instances: [],
-			};
-
-			const prevInstance = clusterApps[app.id].instances.at(-1);
-			const currentInstance = {
-				id: instance.instanceRecord._id,
-				status: app.status,
-			};
-
-			clusterApps[app.id].instances.push(currentInstance);
-
-			// NOTE: this doesn't catch the case where the app is not installed in one instance of the cluster
-			// Do we care about this behavior?
-			if (
-				!prevInstance ||
-				prevInstance.status === currentInstance.status
-			) {
-				logger.debug(
-					'App %s in instance %s shows no conflict (status %s)',
-					app.name,
-					instance.address,
-					app.status,
-				);
-
-				continue;
-			}
-
+	map.forEach((instance) =>
+		controlQueue.push((async () => {
 			logger.debug(
-				'App %s is dirty! (instance %s)',
-				app.name,
-				instance.address,
+				`Fetching apps in instance ${instance.address} (${instance.id})`,
 			);
 
-			clusterApps[app.id].isDirty = true;
-		}
-	}
+			const apps = await getAppsInInstance(instance);
+
+			for (const app of apps) {
+				clusterApps[app.id] = clusterApps[app.id] ?? {
+					appId: app.id,
+					appName: app.name,
+					isDirty: false,
+					instances: [],
+				};
+
+				const prevInstance = clusterApps[app.id].instances.at(-1);
+				const currentInstance = {
+					id: instance.id,
+					status: app.status,
+				};
+
+				clusterApps[app.id].instances.push(currentInstance);
+
+				// NOTE: this doesn't catch the case where the app is not installed in one instance of the cluster
+				// Do we care about this behavior?
+				if (
+					!prevInstance ||
+					prevInstance.status === currentInstance.status
+				) {
+					logger.debug(
+						'App %s in instance %s shows no conflict (status %s)',
+						app.name,
+						instance.address,
+						app.status,
+					);
+
+					continue;
+				}
+
+				logger.debug(
+					'App %s is dirty! (instance %s)',
+					app.name,
+					instance.address,
+				);
+
+				clusterApps[app.id].isDirty = true;
+			}
+		})())
+	);
+
+	await Promise.all(controlQueue);
 
 	// console.log(clusterApps);
 	logger.trace({ msg: 'Cluster apps data', clusterApps });
@@ -386,13 +328,14 @@ export async function getClusterAppsData(instanceMap: InstancesResponse) {
 	return Object.values(clusterApps);
 }
 
-export async function executeAppSync(
+export async function synchronizeApps(
 	clusterApps: Array<AppInstancesInfo>,
-	instanceMap: InstancesResponse,
+	map: InstanceMap,
 ) {
-	logger.trace({ clusterApps, instanceMap }, 'executeAppSync');
+	logger.trace({ clusterApps, map }, 'executeAppSync');
 
-	const instanceCount = Object.keys(instanceMap).length;
+	const instanceCount = map.size;
+
 	const fixedApps = new Set();
 	let fixedConflicts = 0;
 
@@ -409,6 +352,10 @@ export async function executeAppSync(
 
 		for (const instance of appInfo.instances) {
 			logger.debug('Instance %s', instance.id);
+
+			const instanceData = map.get(instance.id);
+
+			if (!instanceData) continue;
 
 			if (
 				instance.status === 'enabled' ||
@@ -429,11 +376,11 @@ export async function executeAppSync(
 			);
 
 			const result = await changeAppStatusInInstance(
-				instanceMap[instance.id],
+				instanceData,
 				appInfo.appId,
 			);
 
-			await sendAlertMessage(appInfo.appName, instanceMap[instance.id]);
+			await sendAlertMessage(appInfo.appName, instanceData);
 
 			if (result.success) {
 				fixedApps.add(appInfo.appId);
@@ -464,27 +411,28 @@ export async function executeAppSync(
 }
 
 export async function main() {
-	logger.info(`Initiating check for workspace ${ExecutionContext.serverURL}`);
+	logger.info(
+		`Initiating check for workspace ${ExecutionContext.serverURL || ''}`,
+	);
 
 	const instanceMap = await getInstances();
 
-	const instanceCount = Object.keys(instanceMap).length;
-
-	if (instanceCount < 2) {
+	if (instanceMap.size < 2) {
 		logger.info(
-			{ instances: instanceCount },
+			{ instances: instanceMap.size },
 			'Only one instance found in workspace, aborting...',
 		);
+
 		return;
 	}
 
-	logger.info('Found %d instances in cluster', instanceCount);
+	logger.info('Found %d instances in cluster', instanceMap.size);
 
 	const clusterApps = await getClusterAppsData(instanceMap);
 
 	logger.info('Found %s apps in cluster', clusterApps.length);
 
-	const { fixedConflicts, fixedApps } = await executeAppSync(
+	const { fixedConflicts, fixedApps } = await synchronizeApps(
 		clusterApps,
 		instanceMap,
 	);
@@ -510,5 +458,6 @@ logger.info(
 setInterval(() => main(), ExecutionContext.interval);
 
 Deno.addSignalListener('SIGINT', () => {
+	logger.info('SIGINT received, good bye!');
 	Deno.exit(0);
 });

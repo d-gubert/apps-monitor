@@ -4,6 +4,7 @@
     },
     "imports": {
         "@std/assert": "jsr:@std/assert@1",
+        "@types/node": "npm:@types/node@^22.13.13",
         "pino": "npm:pino@^9.6.0"
     },
     "fmt": {
