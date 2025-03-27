@@ -26,6 +26,7 @@ export function parseConfigFromEnv(): Partial<ConfigFile> {
 		userId: Deno.env.get('USER_ID') || '',
 		alertRoom: Deno.env.get('ALERT_ROOM') || '',
 		appId: Deno.env.get('APP_ID') || '',
+		serverURL: Deno.env.get('SERVER_URL') || '',
 	};
 }
 
