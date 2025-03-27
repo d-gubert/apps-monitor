@@ -1,5 +1,6 @@
 import { pino } from 'npm:pino';
 import { getInstances } from './microservices.ts';
+import { parseConfig } from './config.ts';
 
 export const logger = pino({
 	level: Deno.env.get('LOG_LEVEL') || 'info',
@@ -11,75 +12,22 @@ export type ConfigFile = {
 	serverURL?: string;
 	interval?: number;
 	alertRoom?: string;
+	appId?: string;
 };
 
 export type TExecutionContext = {
-	configFilePath: string;
 	interval: number;
 	userPAT: string;
 	userId: string;
+	appId?: string;
+	source?: 'file' | 'env';
 	serverURL?: URL;
 	alertRoom?: string;
 };
 
-const ExecutionContext: TExecutionContext = {
-	configFilePath: './apps-monitor-config.json',
-	interval: 5 * 1000 * 60, // 5 minutes default interval
-	userPAT: '',
-	userId: '',
-};
+const ExecutionContext: TExecutionContext = parseConfig();
 
-try {
-	const configFile = JSON.parse(
-		Deno.readTextFileSync(ExecutionContext.configFilePath),
-	) as ConfigFile;
-
-	if (configFile.interval && isFinite(configFile.interval)) {
-		const configInterval = Number(configFile.interval);
-
-		if (configInterval < 30000) {
-			logger.warn(
-				'Configured interval %d is too short, ignoring.',
-				configInterval,
-			);
-		} else {
-			ExecutionContext.interval = configInterval;
-		}
-	}
-
-	if (!configFile.userPAT) {
-		throw new Error('Invalid personal access token (userPAT)');
-	}
-
-	ExecutionContext.userPAT = configFile.userPAT;
-
-	if (!configFile.userId) {
-		throw new Error('Invalid user id (userId)');
-	}
-
-	ExecutionContext.userId = configFile.userId;
-
-	if (configFile.serverURL) {
-		ExecutionContext.serverURL = new URL(configFile.serverURL);
-	}
-
-	if (configFile.alertRoom) {
-		ExecutionContext.alertRoom = configFile.alertRoom;
-	} else {
-		logger.warn(
-			"No alert room specified, we won't be able to send message",
-		);
-	}
-} catch (e) {
-	let error = '';
-
-	if (e instanceof Error) {
-		error = e.message;
-	}
-
-	logger.fatal({ msg: 'Could not parse configuration file', error });
-	Deno.exit(1);
-}
+logger.trace({ ExecutionContext });
 
 export type InstanceData = {
 	id: string;
@@ -261,7 +209,7 @@ export type AppInstancesInfo = {
 };
 
 export async function getClusterAppsData(map: InstanceMap) {
-	logger.trace({ params: { map } }, 'getClusterAppsData');
+	logger.trace({ params: { map: map.values().toArray() } }, 'getClusterAppsData');
 
 	logger.debug('Fetching apps data in cluster');
 
@@ -278,6 +226,13 @@ export async function getClusterAppsData(map: InstanceMap) {
 			const apps = await getAppsInInstance(instance);
 
 			for (const app of apps) {
+				// If we're watching for a specific app, ignore the rest
+				if (
+					ExecutionContext.appId && ExecutionContext.appId !== app.id
+				) {
+					continue;
+				}
+
 				clusterApps[app.id] = clusterApps[app.id] ?? {
 					appId: app.id,
 					appName: app.name,
@@ -332,7 +287,7 @@ export async function synchronizeApps(
 	clusterApps: Array<AppInstancesInfo>,
 	map: InstanceMap,
 ) {
-	logger.trace({ clusterApps, map }, 'executeAppSync');
+	logger.trace({ clusterApps, map: map.values().toArray() }, 'executeAppSync');
 
 	const instanceCount = map.size;
 
@@ -405,14 +360,16 @@ export async function synchronizeApps(
 		fixedConflicts: fixedConflicts,
 	};
 
-	logger.trace(result, 'App sync result');
+	logger.trace(result, 'App synchronization result');
 
 	return result;
 }
 
 export async function main() {
 	logger.info(
-		`Initiating check for workspace ${ExecutionContext.serverURL || ''}`,
+		`Initiating check for workspace ${
+			ExecutionContext.serverURL || ''
+		} via ${ExecutionContext.source}`,
 	);
 
 	const instanceMap = await getInstances();
