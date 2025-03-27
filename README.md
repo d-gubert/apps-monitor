@@ -63,7 +63,7 @@ $ deno run -A main.ts
 $ deno run --allow-env --allow-read --allow-sys --allow-net main.ts
 ```
 
-By default, if no `serverURL` is provided, the tool will try to interact with `kubectl` to discover the instances it needs to monitor. For this the tool needs to running inside a pod in the same cluster it is monitoring.
+By default, if no `serverURL` is provided, the tool will try to interact with `kubectl` to discover the instances it needs to monitor. For this the tool needs to running inside a pod in the same cluster it is monitoring, and it needs a service account that allows it to run `kubectl get pods -A` to get pod info.
 
 To monitor a cluster deployed in High Availability mode, the configuration MUST include the `serverURL` field. This is because the tool needs to know the IP addresses of the other instances in the cluster to be able to reach them.
 
