@@ -76,3 +76,43 @@ LOG_LEVEL=trace deno run main.ts
 ### Server access
 
 The tool needs to be able to reach the server address that has been configured _AND the IP addressess of each individual instance of the cluster as well_ to fully work.
+
+### Example output
+
+This is a sample output, with `LOG_LEVEL=trace`
+
+```sh
+{"level":40,"time":1743101117737,"pid":7,"hostname":"temp-pod","msg":"No alert room specified, we won't be able to send message"}
+{"level":40,"time":1743101117737,"pid":7,"hostname":"temp-pod","msg":"App id received - watching restricted to 55ecd482-392f-447a-8fdc-a44b371ff794"}
+{"level":10,"time":1743101117737,"pid":7,"hostname":"temp-pod","ExecutionContext":{"interval":300000,"userPAT":"oXcY4-k6iludNf-b7FlTWUuXtLCBhQEJ5_bdJ3G9_eU","userId":"XaLJ9qv2aSvAc8WSN","source":"env","appId":"55ecd482-392f-447a-8fdc-a44b371ff794"}}
+{"level":30,"time":1743101117737,"pid":7,"hostname":"temp-pod","msg":"Initiating check for workspace  via env"}
+{"level":30,"time":1743101117810,"pid":7,"hostname":"temp-pod","msg":"Found 3 instances in cluster"}
+{"level":10,"time":1743101117811,"pid":7,"hostname":"temp-pod","params":{"map":[{"address":"10.244.0.105","id":"rocketchat-workspace-test-6697c698d9-2478c","port":3000},{"address":"10.244.0.100","id":"rocketchat-workspace-test-6697c698d9-7b2qx","port":3000},{"address":"10.244.0.106","id":"rocketchat-workspace-test-6697c698d9-qlfbv","port":3000}]},"msg":"getClusterAppsData"}
+{"level":20,"time":1743101117811,"pid":7,"hostname":"temp-pod","msg":"Fetching apps data in cluster"}
+{"level":20,"time":1743101117811,"pid":7,"hostname":"temp-pod","msg":"Fetching apps in instance 10.244.0.105 (rocketchat-workspace-test-6697c698d9-2478c)"}
+{"level":10,"time":1743101117811,"pid":7,"hostname":"temp-pod","params":{"instance":{"address":"10.244.0.105","id":"rocketchat-workspace-test-6697c698d9-2478c","port":3000}},"msg":"getAppsInInstance"}
+{"level":20,"time":1743101117811,"pid":7,"hostname":"temp-pod","msg":"Fetching apps from 10.244.0.105 (rocketchat-workspace-test-6697c698d9-2478c)"}
+{"level":10,"time":1743101117811,"pid":7,"hostname":"temp-pod","params":{"input":"http://10.244.0.105:3000/api/apps/installed"},"msg":"api"}
+{"level":10,"time":1743101117811,"pid":7,"hostname":"temp-pod","params":{"url":"http://10.244.0.105:3000/api/apps/installed","_init":{"headers":{"X-User-Id":"XaLJ9qv2aSvAc8WSN","X-Auth-Token":"oXcY4-k6iludNf-b7FlTWUuXtLCBhQEJ5_bdJ3G9_eU"}}},"msg":"fetch()"}
+{"level":20,"time":1743101117812,"pid":7,"hostname":"temp-pod","msg":"Fetching apps in instance 10.244.0.100 (rocketchat-workspace-test-6697c698d9-7b2qx)"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"instance":{"address":"10.244.0.100","id":"rocketchat-workspace-test-6697c698d9-7b2qx","port":3000}},"msg":"getAppsInInstance"}
+{"level":20,"time":1743101117812,"pid":7,"hostname":"temp-pod","msg":"Fetching apps from 10.244.0.100 (rocketchat-workspace-test-6697c698d9-7b2qx)"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"input":"http://10.244.0.100:3000/api/apps/installed"},"msg":"api"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"url":"http://10.244.0.100:3000/api/apps/installed","_init":{"headers":{"X-User-Id":"XaLJ9qv2aSvAc8WSN","X-Auth-Token":"oXcY4-k6iludNf-b7FlTWUuXtLCBhQEJ5_bdJ3G9_eU"}}},"msg":"fetch()"}
+{"level":20,"time":1743101117812,"pid":7,"hostname":"temp-pod","msg":"Fetching apps in instance 10.244.0.106 (rocketchat-workspace-test-6697c698d9-qlfbv)"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"instance":{"address":"10.244.0.106","id":"rocketchat-workspace-test-6697c698d9-qlfbv","port":3000}},"msg":"getAppsInInstance"}
+{"level":20,"time":1743101117812,"pid":7,"hostname":"temp-pod","msg":"Fetching apps from 10.244.0.106 (rocketchat-workspace-test-6697c698d9-qlfbv)"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"input":"http://10.244.0.106:3000/api/apps/installed"},"msg":"api"}
+{"level":10,"time":1743101117812,"pid":7,"hostname":"temp-pod","params":{"url":"http://10.244.0.106:3000/api/apps/installed","_init":{"headers":{"X-User-Id":"XaLJ9qv2aSvAc8WSN","X-Auth-Token":"oXcY4-k6iludNf-b7FlTWUuXtLCBhQEJ5_bdJ3G9_eU"}}},"msg":"fetch()"}
+{"level":20,"time":1743101117892,"pid":7,"hostname":"temp-pod","msg":"App ClamAV in instance 10.244.0.106 shows no conflict (status manually_enabled)"}
+{"level":20,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"App ClamAV in instance 10.244.0.105 shows no conflict (status manually_enabled)"}
+{"level":20,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"App ClamAV in instance 10.244.0.100 shows no conflict (status manually_enabled)"}
+{"level":10,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"Cluster apps data","clusterApps":{"55ecd482-392f-447a-8fdc-a44b371ff794":{"appId":"55ecd482-392f-447a-8fdc-a44b371ff794","appName":"ClamAV","isDirty":false,"instances":[{"id":"rocketchat-workspace-test-6697c698d9-qlfbv","status":"manually_enabled"},{"id":"rocketchat-workspace-test-6697c698d9-2478c","status":"manually_enabled"},{"id":"rocketchat-workspace-test-6697c698d9-7b2qx","status":"manually_enabled"}]}}}
+{"level":30,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"Found 1 apps in cluster"}
+{"level":10,"time":1743101117893,"pid":7,"hostname":"temp-pod","clusterApps":[{"appId":"55ecd482-392f-447a-8fdc-a44b371ff794","appName":"ClamAV","isDirty":false,"instances":[{"id":"rocketchat-workspace-test-6697c698d9-qlfbv","status":"manually_enabled"},{"id":"rocketchat-workspace-test-6697c698d9-2478c","status":"manually_enabled"},{"id":"rocketchat-workspace-test-6697c698d9-7b2qx","status":"manually_enabled"}]}],"map":[{"address":"10.244.0.105","id":"rocketchat-workspace-test-6697c698d9-2478c","port":3000},{"address":"10.244.0.100","id":"rocketchat-workspace-test-6697c698d9-7b2qx","port":3000},{"address":"10.244.0.106","id":"rocketchat-workspace-test-6697c698d9-qlfbv","port":3000}],"msg":"executeAppSync"}
+{"level":20,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"Checking app ClamAV across cluster..."}
+{"level":20,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"App ClamAV is synchronized across cluster"}
+{"level":10,"time":1743101117893,"pid":7,"hostname":"temp-pod","fixedApps":0,"fixedConflicts":0,"msg":"App synchronization result"}
+{"level":30,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"Check concluded, no conflicting status found"}
+{"level":30,"time":1743101117893,"pid":7,"hostname":"temp-pod","msg":"Setting interval for 300 seconds"}
+```
