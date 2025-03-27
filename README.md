@@ -1,11 +1,11 @@
 # Apps Monitor
 
 <!--toc:start-->
-
 - [Apps Monitor](#apps-monitor)
-  - [Configuration](#configuration)
-  - [Running](#running) - [Server access](#server-access)
-  <!--toc:end-->
+    - [Configuration](#configuration)
+    - [Running](#running)
+    - [Server access](#server-access)
+<!--toc:end-->
 
 We're currently investigating an issue where some apps might show inconsistent status across the instances of a cluster. While we look for the root cause of this issue, this tool helps mitigate the impacts of the instability on environments.
 
@@ -20,12 +20,12 @@ This is an example config for that file:
 
 ```json
 {
-  "userPAT": "NonIfSuzWFzEPA2RB7slUGp-ubNtLGZy78aWwIWjWpt",
-  "userId": "YzrFwYjd7qDAhArBZ",
-  "serverURL": "http://172.19.0.5",
-  "interval": 30000,
-  "alertRoom": "671feba8af417d3edd6dbf30",
-  "appId": "55ecd482-392f-447a-8fdc-a44b371ff794"
+    "userPAT": "NonIfSuzWFzEPA2RB7slUGp-ubNtLGZy78aWwIWjWpt",
+    "userId": "YzrFwYjd7qDAhArBZ",
+    "serverURL": "http://172.19.0.5",
+    "interval": 30000,
+    "alertRoom": "671feba8af417d3edd6dbf30",
+    "appId": "55ecd482-392f-447a-8fdc-a44b371ff794"
 }
 ```
 
@@ -81,7 +81,7 @@ The tool needs to be able to reach the server address that has been configured _
 
 This is a sample output, with `LOG_LEVEL=trace`
 
-```sh
+```plaintext
 {"level":40,"time":1743101117737,"pid":7,"hostname":"temp-pod","msg":"No alert room specified, we won't be able to send message"}
 {"level":40,"time":1743101117737,"pid":7,"hostname":"temp-pod","msg":"App id received - watching restricted to 55ecd482-392f-447a-8fdc-a44b371ff794"}
 {"level":10,"time":1743101117737,"pid":7,"hostname":"temp-pod","ExecutionContext":{"interval":300000,"userPAT":"oXcY4-k6iludNf-b7FlTWUuXtLCBhQEJ5_bdJ3G9_eU","userId":"XaLJ9qv2aSvAc8WSN","source":"env","appId":"55ecd482-392f-447a-8fdc-a44b371ff794"}}
