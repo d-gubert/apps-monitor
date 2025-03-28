@@ -6,7 +6,7 @@ import { InstanceMap } from './main.ts';
 export async function getInstances(): Promise<InstanceMap> {
 	const kubectlRaw = await new Promise<string>((resolve, reject) => {
 		exec(
-			'kubectl get pods -A -o json',
+			'kubectl get pods -o json',
 			(error: Error | null, stdout: string) => {
 				if (error) {
 					reject(error);
@@ -30,10 +30,14 @@ export async function getInstances(): Promise<InstanceMap> {
 	items.forEach((pod) => {
 		const id = pod.metadata?.name;
 		const address = pod.status?.podIP;
-		const port = pod.spec?.containers?.[0].ports?.[0].containerPort;
+		// there are more than one ports "exposed", ordering of which is not guranteed.
+		// we don't change PORT, 3000, default, is what is set always.
+		// safer, alternative would be checking for the variable itself.
+		//const port = pod.spec?.containers?.[0].ports?.[0].containerPort;
+		const port = 3000;
 
 		// The only pods we're interested in are the ones with core chat instances
-		if (!id?.startsWith('rocketchat-') || !port || !address) {
+		if (!id?.startsWith('rocketchat-') || !address) {
 			return;
 		}
 
